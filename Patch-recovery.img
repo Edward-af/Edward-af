@@ -1,0 +1,58 @@
+name: Patch Recovery Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      RECOVERY_URL:
+        description: 'URL of the recovery image to patch'
+        required: true
+        default: 'https://we.tl/t-MKbgvT5uQT'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Prepare environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget lz4 tar python3
+
+    - name: Download recovery image
+      run: |
+        wget ${{ github.event.inputs.RECOVERY_URL }} -O recovery.img
+        if [ ! -f recovery.img ]; then
+          echo "Recovery image not downloaded!"
+          exit 1
+        fi
+
+    - name: Ensure magiskboot is executable
+      run: |
+        chmod a+x magiskboot
+
+    - name: Patch recovery image
+      run: |
+        ./magiskboot unpack recovery.img
+        ./magiskboot cpio ramdisk.cpio "patch"
+        ./magiskboot repack recovery.img recovery-patched.img
+
+    - name: Check patched image
+      run: |
+        if [ ! -f recovery-patched.img ]; then
+          echo "Patched recovery image not found!"
+          exit 1
+        fi
+
+    - name: Package patched recovery image
+      run: |
+        mkdir output
+        mv recovery-patched.img output/recovery.img
+        cd output
+        tar cvf fastbootd-recovery.tar recovery.img
+        md5sum fastbootd-recovery.tar > fastbootd-recovery.tar.md5
+
+    - name: Upload patched recovery
+      uses: actions/upload-artifact@v3
+      with:
+        path: output/*
+        name: Patched-Recovery
